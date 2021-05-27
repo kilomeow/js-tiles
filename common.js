@@ -115,6 +115,8 @@ Game.render = function () {};
 //
 
 window.onload = function () {
-    var context = document.getElementById('demo').getContext('2d');
+    var canvas = document.getElementById('demo');
+    Game.canvas = canvas;
+    var context = canvas.getContext('2d');
     Game.run(context);
 };

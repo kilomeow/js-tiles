@@ -5,25 +5,25 @@ var map = {
     layers: [[
         3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3,
         3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3,
-        3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3,
-        3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3,
-        3, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 3,
-        3, 1, 1, 1, 1, 1, 2, 1, 1, 1, 1, 3,
-        3, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 3,
-        3, 1, 2, 2, 1, 1, 1, 1, 1, 1, 1, 3,
-        3, 1, 1, 1, 2, 1, 1, 1, 1, 1, 1, 3,
         3, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 3,
+        3, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 3,
+        3, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 3,
+        3, 1, 1, 1, 1, 2, 2, 1, 2, 1, 1, 3,
+        3, 1, 2, 2, 1, 2, 1, 1, 2, 1, 1, 3,
+        3, 1, 2, 2, 1, 2, 1, 1, 2, 1, 1, 3,
+        3, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 3,
+        3, 1, 1, 2, 2, 2, 1, 1, 1, 1, 1, 3,
         3, 1, 1, 1, 1, 2, 1, 1, 1, 1, 1, 3,
         3, 3, 3, 1, 1, 2, 3, 3, 3, 3, 3, 3
     ], [
         4, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4,
-        4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4,
-        4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4,
-        4, 0, 0, 5, 0, 0, 0, 0, 0, 5, 0, 4,
-        4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4,
-        4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4,
-        4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4,
-        4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4,
+        4, 0, 0, 0, 0, 0, 5, 5, 0, 0, 0, 4,
+        4, 0, 0, 0, 0, 0, 5, 5, 0, 5, 0, 4,
+        4, 0, 0, 5, 5, 0, 0, 0, 0, 5, 0, 4,
+        4, 0, 0, 5, 5, 0, 5, 5, 0, 0, 0, 4,
+        4, 0, 0, 0, 0, 0, 5, 5, 0, 0, 0, 4,
+        4, 0, 0, 5, 5, 0, 5, 5, 0, 5, 0, 4,
+        4, 0, 0, 0, 5, 0, 5, 5, 0, 5, 0, 4,
         4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4,
         4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4,
         4, 4, 4, 0, 5, 4, 4, 4, 4, 4, 4, 4,
@@ -32,9 +32,9 @@ var map = {
     getTile: function (layer, col, row) {
         return this.layers[layer][row * map.cols + col];
     },
-    isSolidTileAtXY: function (x, y) {
-        var col = Math.floor(x / this.tsize);
-        var row = Math.floor(y / this.tsize);
+    isSolidTileAtXY: function (pos) {
+        var col = Math.floor(pos.x / this.tsize);
+        var row = Math.floor(pos.y / this.tsize);
 
         // tiles 3 and 5 are solid -- the rest are walkable
         // loop through all layers and return TRUE if any tile is solid
@@ -113,19 +113,56 @@ function Hero(map, x, y) {
 
 Hero.SPEED = 256; // pixels per second
 
-Hero.prototype.move = function (delta, dirx, diry) {
-    // move hero
-    this.x += dirx * Hero.SPEED * delta;
-    this.y += diry * Hero.SPEED * delta;
+_move = (pos, walk, target, collide) => {
+    let d = target - pos;
+    let dir = Math.sign(d);
 
-    // check if we walked into a non-walkable tile
-    this._collide(dirx, diry);
+    let end = pos + dir*walk;
 
-    // clamp values
-    var maxX = this.map.cols * this.map.tsize;
-    var maxY = this.map.rows * this.map.tsize;
-    this.x = Math.max(0, Math.min(this.x, maxX));
-    this.y = Math.max(0, Math.min(this.y, maxY));
+    let coord = end;
+
+    if (collide(end)) {
+        coord = map.tsize*Math.floor(pos/map.tsize) + Math.floor(map.tsize/2);
+    } else if ((end - target)*dir >= 0) {
+        coord = target;
+    }
+
+    return {
+        coord,
+        remaining: walk-Math.abs(coord - pos)
+    }
+
+}
+
+var EPSILON = 0.001;
+
+Hero.prototype.corner = function (pos, dir) {
+    return {
+        x: pos.x + dir.x*Math.floor(this.width/2)  -dir.x,
+        y: pos.y + dir.y*Math.floor(this.height/2) -dir.y,
+    }
+}
+
+Hero.prototype._is_collide = function (x, y) {
+    pos = {x, y};
+    return map.isSolidTileAtXY(this.corner(pos, {x: -1, y: -1})) ||
+           map.isSolidTileAtXY(this.corner(pos, {x:  1, y: -1})) ||
+           map.isSolidTileAtXY(this.corner(pos, {x: -1, y:  1})) ||
+           map.isSolidTileAtXY(this.corner(pos, {x:  1, y:  1}))
+}
+
+Hero.prototype.move = function (delta, target) {
+    let target_x = map.getX(target.col) + Math.floor(this.width/2);
+    let target_y = map.getY(target.row) + Math.floor(this.height/2);
+
+    let move_x = _move(this.x, Hero.SPEED*delta, target_x, (x) => this._is_collide(x, this.y));
+    this.x = move_x.coord;
+    let move_y = _move(this.y, move_x.remaining, target_y, (y) => this._is_collide(this.x, y))
+    this.y = move_y.coord;
+    let move2_x = _move(this.x, move_y.remaining, target_x, (x) => this._is_collide(x, this.y));
+    this.x = move_x.coord;
+
+    return (move2_x.remaining > EPSILON);
 };
 
 Hero.prototype._collide = function (dirx, diry) {
@@ -171,6 +208,18 @@ Game.load = function () {
 };
 
 Game.init = function () {
+    this.target = null;
+    var game = this;
+    this.canvas.addEventListener('mousedown', function(e) {
+        const rect = game.canvas.getBoundingClientRect()
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const target_x = game.camera.x + x;
+        const target_y = game.camera.y + y;
+        game.target = {col: map.getCol(target_x),
+                       row: map.getRow(target_y)};
+        console.log(game.target)
+    });
     Keyboard.listenForEvents(
         [Keyboard.LEFT, Keyboard.RIGHT, Keyboard.UP, Keyboard.DOWN]);
     this.tileAtlas = Loader.getImage('tiles');
@@ -184,16 +233,14 @@ Game.update = function (delta) {
     // handle hero movement with arrow keys
     var dirx = 0;
     var diry = 0;
-    if (Keyboard.isDown(Keyboard.LEFT)) { dirx = -1; }
-    else if (Keyboard.isDown(Keyboard.RIGHT)) { dirx = 1; }
-    else if (Keyboard.isDown(Keyboard.UP)) { diry = -1; }
-    else if (Keyboard.isDown(Keyboard.DOWN)) { diry = 1; }
-
-    this.hero.move(delta, dirx, diry);
+    if (this.target) {
+        let reached = this.hero.move(delta, this.target);
+        if (reached) {this.target = null;}
+    }
     this.camera.update();
 };
 
-Game._drawLayer = function (layer) {
+Game._drawLayer = function (layer, target=null) {
     var startCol = Math.floor(this.camera.x / map.tsize);
     var endCol = startCol + (this.camera.width / map.tsize);
     var startRow = Math.floor(this.camera.y / map.tsize);
@@ -206,6 +253,7 @@ Game._drawLayer = function (layer) {
             var tile = map.getTile(layer, c, r);
             var x = (c - startCol) * map.tsize + offsetX;
             var y = (r - startRow) * map.tsize + offsetY;
+            target_tile = target && (c == target.col) && (r == target.row);
             if (tile !== 0) { // 0 => empty tile
                 this.ctx.drawImage(
                     this.tileAtlas, // image
@@ -219,12 +267,26 @@ Game._drawLayer = function (layer) {
                     map.tsize // target height
                 );
             }
+            if (target_tile) {
+                this.ctx.strokeStyle = "rgba(255, 255, 255, 0.3)"
+                this.ctx.beginPath()
+                this.ctx.lineWidth = 3;
+                let r = Math.floor(map.tsize/2);
+                this.ctx.arc(
+                    Math.round(x) + r,  // target x
+                    Math.round(y) + r, // target y
+                    r-3, // target width
+                    0,
+                    2 * Math.PI // target height
+                );
+                this.ctx.stroke()
+            }
         }
     }
 };
 
 Game._drawGrid = function () {
-        var width = map.cols * map.tsize;
+    var width = map.cols * map.tsize;
     var height = map.rows * map.tsize;
     var x, y;
     for (var r = 0; r < map.rows; r++) {
@@ -247,7 +309,7 @@ Game._drawGrid = function () {
 
 Game.render = function () {
     // draw map background layer
-    this._drawLayer(0);
+    this._drawLayer(0, this.target);
 
     // draw main character
     this.ctx.drawImage(
@@ -258,5 +320,5 @@ Game.render = function () {
     // draw map top layer
     this._drawLayer(1);
 
-    this._drawGrid();
+    //this._drawGrid();
 };
